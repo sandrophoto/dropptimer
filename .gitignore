@@ -1,0 +1,6 @@
+Dist/
+.build/
+releases/*.zip
+.DS_Store
+AppIcon.iconset/
+icon_1024.png
