@@ -9,7 +9,7 @@ ZIP_OUT="${ZIP_OUT:-}"        # si défini : produit un zip pristine depuis le s
 
 # On assemble ET on signe dans un dossier temporaire hors iCloud Drive : iCloud
 # réinjecte des xattrs (FinderInfo) qui font échouer codesign de façon aléatoire.
-STAGE="$(mktemp -d "${TMPDIR:-/tmp}/dropptimer.XXXXXX")"
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/pullthetimer.XXXXXX")"
 APP="$STAGE/$APP_NAME"
 trap 'rm -rf "$STAGE"' EXIT
 
@@ -40,8 +40,8 @@ codesign --force --sign - "$SPK/Versions/B/Updater.app"
 codesign --force --sign - "$SPK/Versions/B/Autoupdate"
 codesign --force --sign - "$SPK"
 codesign --force --sign - \
-    --identifier com.tigre.dropptimer \
-    --entitlements DroppTimer.entitlements \
+    --identifier com.tigre.pullthetimer \
+    --entitlements PullTheTimer.entitlements \
     "$APP"
 codesign -v --strict "$APP" && echo "   signature vérifiée ✓"
 

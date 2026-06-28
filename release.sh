@@ -8,7 +8,7 @@ VERSION="${1:-}"
 [ -z "$VERSION" ] && { echo "Usage : ./release.sh <version>   (ex. ./release.sh 1.0.0)"; exit 1; }
 
 GITHUB_USER="sandrophoto"
-REPO="dropptimer"
+REPO="pullthetimer-pro-plus-3000"
 
 PLIST="Info.plist"
 GEN="bin/generate_appcast"

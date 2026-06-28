@@ -10,7 +10,7 @@ VERSION="${1:-}"
 [ -z "$VERSION" ] && { echo "Usage : ./publish.sh <version>   (ex. ./publish.sh 1.0.0)"; exit 1; }
 
 GITHUB_USER="sandrophoto"
-REPO="dropptimer"
+REPO="pullthetimer-pro-plus-3000"
 SLUG="$GITHUB_USER/$REPO"
 
 if ! gh auth status >/dev/null 2>&1; then

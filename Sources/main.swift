@@ -13,6 +13,12 @@ final class Updater {
             startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
     }
     func checkForUpdates() { controller.updater.checkForUpdates() }
+    var automaticallyChecks: Bool {
+        get { controller.updater.automaticallyChecksForUpdates }
+        set { controller.updater.automaticallyChecksForUpdates = newValue }
+    }
+    var lastCheck: Date? { controller.updater.lastUpdateCheckDate }
+    var currentVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—" }
 }
 
 // MARK: - Géométrie : une fine ligne verticale terminée par un bout arrondi
@@ -321,10 +327,11 @@ struct SettingsView: View {
     @ObservedObject var settings: Settings
     var onTestSound: () -> Void
     var onTestTriggers: () -> Void
+    @State private var autoCheck = Updater.shared.automaticallyChecks
 
     var runningApps: [RunningApp] {
         NSWorkspace.shared.runningApplications
-            .filter { $0.activationPolicy == .regular && $0.bundleIdentifier != nil && $0.bundleIdentifier != "com.tigre.dropptimer" }
+            .filter { $0.activationPolicy == .regular && $0.bundleIdentifier != nil && $0.bundleIdentifier != "com.tigre.pullthetimer" }
             .map { RunningApp(id: $0.bundleIdentifier!, name: $0.localizedName ?? $0.bundleIdentifier!) }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
@@ -333,8 +340,34 @@ struct SettingsView: View {
         TabView {
             generalTab.tabItem { Label("Général", systemImage: "gearshape") }
             triggersTab.tabItem { Label("Déclencheurs", systemImage: "bell.badge") }
+            updatesTab.tabItem { Label("Mise à jour", systemImage: "arrow.triangle.2.circlepath") }
         }
         .frame(width: 480, height: 560)
+    }
+
+    private var updatesTab: some View {
+        Form {
+            Section {
+                LabeledContent("Application", value: appDisplayName)
+                LabeledContent("Version", value: Updater.shared.currentVersion)
+            }
+            Section("Mises à jour automatiques") {
+                Toggle("Vérifier automatiquement chaque jour", isOn: $autoCheck)
+                    .onChange(of: autoCheck) { Updater.shared.automaticallyChecks = $0 }
+                LabeledContent("Dernière vérification", value: lastCheckText)
+                Button("Rechercher les mises à jour maintenant…") { Updater.shared.checkForUpdates() }
+            }
+            Section {
+                Text("Les mises à jour sont téléchargées et installées automatiquement depuis GitHub (signées et vérifiées).")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+    private var lastCheckText: String {
+        guard let d = Updater.shared.lastCheck else { return "jamais" }
+        let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short
+        return f.string(from: d)
     }
 
     private var generalTab: some View {
@@ -965,14 +998,30 @@ final class AppController: NSObject, NSApplicationDelegate, UNUserNotificationCe
     func showMenu() {
         let menu = NSMenu()
         if remainingSeconds > 0 {
-            let it = NSMenuItem(title: "⏳ " + formatTime(remainingSeconds) + " restant", action: nil, keyEquivalent: "")
+            let state = timerModel.paused ? "⏸ " + formatTime(remainingSeconds) + " (en pause)"
+                                          : "⏳ " + formatTime(remainingSeconds) + " restant"
+            let it = NSMenuItem(title: state, action: nil, keyEquivalent: "")
             it.isEnabled = false; menu.addItem(it)
+            if totalCycles > 1 || infiniteRepeat {
+                let cyc = NSMenuItem(title: infiniteRepeat ? "   répétition ∞ (cycle \(cycleNum))"
+                                                           : "   répétition \(cycleNum)/\(totalCycles)",
+                                     action: nil, keyEquivalent: "")
+                cyc.isEnabled = false; menu.addItem(cyc)
+            }
+            menu.addItem(NSMenuItem(title: timerModel.paused ? "Reprendre" : "Pause",
+                                    action: #selector(menuPause), keyEquivalent: ""))
             menu.addItem(NSMenuItem(title: "Annuler le minuteur", action: #selector(menuCancel), keyEquivalent: ""))
             menu.addItem(.separator())
+        } else {
+            let hint = NSMenuItem(title: "Tirez vers le bas pour régler", action: nil, keyEquivalent: "")
+            hint.isEnabled = false; menu.addItem(hint)
+            if timerMinutes > 0 {
+                let label = timerMinutes >= 60 ? "Relancer le dernier (\(timerMinutes/60)h\(String(format: "%02d", timerMinutes%60)))"
+                                               : "Relancer le dernier (\(timerMinutes) min)"
+                menu.addItem(NSMenuItem(title: label, action: #selector(menuRestart), keyEquivalent: ""))
+            }
+            menu.addItem(.separator())
         }
-        let hint = NSMenuItem(title: "Tirez vers le bas pour régler", action: nil, keyEquivalent: "")
-        hint.isEnabled = false; menu.addItem(hint)
-        menu.addItem(.separator())
         for m in [1, 5, 15, 60] {
             let title = m == 60 ? "1 heure" : (m == 1 ? "1 minute" : "\(m) minutes")
             let it = NSMenuItem(title: title, action: #selector(menuPreset(_:)), keyEquivalent: "")
@@ -980,7 +1029,6 @@ final class AppController: NSObject, NSApplicationDelegate, UNUserNotificationCe
         }
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Options…", action: #selector(menuOptions), keyEquivalent: ","))
-        menu.addItem(NSMenuItem(title: "Rechercher les mises à jour…", action: #selector(menuUpdate), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "À propos de \(appDisplayName)", action: #selector(menuAbout), keyEquivalent: ""))
         for it in menu.items where it.target == nil && it.action != nil { it.target = self }
         // Quitter cible NSApp (terminate: n'existe pas sur le contrôleur)
@@ -1062,6 +1110,8 @@ final class AppController: NSObject, NSApplicationDelegate, UNUserNotificationCe
     }
 
     @objc func showMenuDeferred() { showMenu() }
+    @objc func menuPause() { togglePause() }
+    @objc func menuRestart() { if timerMinutes > 0 { startTimer(minutes: timerMinutes) } }
     @objc func menuCancel() { cancelTimer() }
     @objc func menuOptions() { openSettings() }
     @objc func menuUpdate() { Updater.shared.checkForUpdates() }
@@ -1076,6 +1126,8 @@ final class AppController: NSObject, NSApplicationDelegate, UNUserNotificationCe
         let appMenu = NSMenu()
         let about = appMenu.addItem(withTitle: "À propos de \(appDisplayName)", action: #selector(menuAbout), keyEquivalent: "")
         about.target = self
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Rechercher les mises à jour…", action: #selector(menuUpdate), keyEquivalent: "").target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Préférences…", action: #selector(menuOptions), keyEquivalent: ",").target = self
         appMenu.addItem(.separator())
